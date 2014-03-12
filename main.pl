@@ -13,8 +13,10 @@ use SDLx::Rect;
 use SDL::Event;
 use SDL::Events;
 use SDLx::Music;
+use SDLx::Sound;
 use SDL::Mixer::Music;
 use SDLx::Text;
+use Menu::Title;
 #--Define Entities--
 use Entity::Player;
 use Entity::Enemy qw(createEnemy);
@@ -36,6 +38,8 @@ our @playerPos = (0,0);
 
 #--Define variables--
 my $new_event = SDL::Event->new();
+
+my $snd = SDLx::Sound->new();
 
 our $tick;
 my $timerTick :shared = 0;
@@ -78,7 +82,7 @@ $levelDir = 1;
 
 my $level; #holds the current levelnumber
 $level = 0; #make sure it's 0 to start with
-my $maxLevel = 2; #which level is the last level
+my $maxLevel = 3; #which level is the last level
 
 my @ents; #holds all the data hashrefs
 
@@ -101,15 +105,43 @@ my $app = SDLx::App->new(   #Create Window
 
 @room = (); #holds the room data 
 my $offset; #holds the drawing offset data
+my $titleMenu = {
+  "New Game" => \&startGame,
+  "Exit" => sub{ exit }
+};
+my $order = [
+  "New Game",
+  "Exit"
+];
+
+$hackPlusMusic->play($hackPlusMusic->data("TitleTheme"), loops => 1);
+$app->add_show_handler(\&drawMenu);
+my $menuTitle = Menu::Title::init($titleMenu, $order, $app);
+$app->add_show_handler(sub{ $app->sync });
+my $menu = SDLx::Sprite->new( image => "img/main-menu2.png" );
+$app->run();
 
 #--actually start the program--
-$timerID = SDL::Time::add_timer(200, 'moveTimer');
-loadWorld(); #load the world!
-initHandlers(1); #initialise the handlers
-
-$app->run(); #TIME TO RUN, COWARDS!
+sub startGame {
+  $app->remove_all_handlers();
+  $timerID = SDL::Time::add_timer(200, 'moveTimer');
+  loadWorld(); #load the world!
+  initHandlers(1); #initialise the handlers
+}
 
 ##WARNING: SUBRROUTINES AFTER THIS POINT##
+
+sub drawMenu {
+  my ($delta, $app) = @_;
+  $app->draw_rect([0, 0, $resolution{'width'}, $resolution{'height'}], 0x000000);
+  my $surface = SDL::GFX::Rotozoom::surface ($menu->surface(), 0, 1.8, SMOOTHING_OFF);
+  my $sprite = SDLx::Sprite->new( surface => $surface);
+  $sprite->x(($resolution{'width'} / 2) - $sprite->w() / 2);
+  $sprite->y(($resolution{'height'} / 2) - $sprite->h() / 2);
+  $sprite->draw($app);
+}
+  
+
 
 sub handleEvents { #Handles the quit event
   my ($event, $app) = @_;
@@ -308,7 +340,6 @@ sub parseWorld {
 
 sub initHandlers { #(re)initialise world events
   my $deInitEnemies = shift;
-  #drawWorld(0, $app); #resets the stair variables
   SDL::Time::remove_timer($timerID); 
   $timerID = SDL::Time::add_timer(200, 'moveTimer');
   $app->add_move_handler(sub {if ($timerTick and !$tick) {$timerTick = 0; $tick = 1} else {$tick = 0}});
@@ -325,18 +356,21 @@ sub initHandlers { #(re)initialise world events
   $app->add_show_handler(\&zoomApp); #Zoom the entire app's screen
   $app->add_show_handler(\&writeScore);
   $app->add_show_handler(sub {$app->sync}); #draw everything to the screen
+  drawWorld(0, $app); #resets the stair variables
 }
 
 # death screen, grim reaper kills main player
 
 sub death {
   SDL::Mixer::Music::fade_out_music(2000); #Manual fadeout calling b/c documentation was for a stub function
+  $snd->play("music/evilLaugh.ogg");    
   foreach my $sprite (@death) {
     $app->draw_rect([0, 0, $resolution{'width'}, $resolution{'height'}], 0x000000);
     $sprite->x(($resolution{'width'} / 2) - $sprite->w() / 2);
     $sprite->y(($resolution{'height'} / 2) - $sprite->h() / 2);
     $sprite->draw($app);
     $app->sync;
+
     usleep 500000;
   }
   sleep 1;
